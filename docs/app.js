@@ -145,6 +145,13 @@
   const GAP = 0;      // artworks may touch each other, as in the mockups
   // Each artwork keeps its own spacing: about half of them sit flush against a neighbour, the rest keep a small random gap.
   const spacing = new Map();
+  // Each artwork also gets its own random spot on the page, so the wall spreads out irregularly
+  // instead of packing around the pad.
+  const anchors = new Map();
+  const anchorOf = (n) => {
+    if (!anchors.has(n)) anchors.set(n, { u: 0.02 + Math.random() * 0.96, v: 0.02 + Math.random() * 0.96 });
+    return anchors.get(n);
+  };
   const spacingOf = (n) => {
     if (!spacing.has(n)) spacing.set(n, Math.random() < 0.55 ? 0 : 6 + Math.random() * 26);
     return spacing.get(n);
@@ -162,34 +169,41 @@
     const k = selection.length;
     // Size follows similarity: the best match gets ~6x the surface of the weakest one shown.
     const top = selection[0].score, low = selection[k - 1].score, span = Math.max(1e-6, top - low);
-    const weights = selection.map((s) => 0.3 + 1.7 * Math.pow((s.score - low) / span, 1.3));
+    // Steep curve: the few closest matches are much bigger, weaker ones drop off quickly to small tiles
+    // (best match ~6x the side of the weakest one shown).
+    const weights = selection.map((s, i) => (0.06 + 3 * Math.pow((s.score - low) / span, 2.4)) * (i === 0 ? 1.5 : 1));
     const wsum = weights.reduce((a, b) => a + b, 0);
     const budget = free * (0.5 + 0.28 * Math.min(1, k / MAX)); // the mockups fill most of the screen
-    const maxSide = Math.min(W, H) * 0.4;
+    const maxSide = Math.min(W, H) * 0.5;
+    const minSide = Math.min(W, H) * 0.06; // keep the smallest tiles readable
 
     const placed = [padBox];
     const result = [];
     selection.forEach((sel, i) => {
       const it = items[sel.n];
       const prev = shown.get(sel.n)?.box;
+      // Target = the artwork's own random spot; the very best matches lean a little toward the pad.
+      const a = anchorOf(sel.n), lean = i < 3 ? 0.35 : i < 8 ? 0.15 : 0;
+      const tx = a.u * W + (cx - a.u * W) * lean, ty = a.v * H + (cy - a.v * H) * lean;
       let area = (budget * weights[i]) / wsum;
       for (let attempt = 0; attempt < 5; attempt++, area *= 0.72) {
         let w = Math.sqrt(area * it.r), h = Math.sqrt(area / it.r);
         const f = Math.min(1, maxSide / Math.max(w, h)); w *= f; h *= f;
+        const g = Math.max(1, minSide / Math.min(w, h)); w *= g; h *= g;
         let best = null, bestCost = Infinity;
         const tryAt = (x, y) => {
           const b = { x, y, w, h };
           if (x < -w * 0.3 || y < -h * 0.3 || x + w > W + w * 0.3 || y + h > H + h * 0.3) return;
           if (placed.some((p) => overlaps(b, p))) return;
-          // Pull toward the pad; existing artworks also resist moving far (smooth evolution).
-          let cost = Math.hypot(x + w / 2 - cx, (y + h / 2 - cy) * 1.15);
+          // Pull toward the artwork's own spot; existing artworks also resist moving far (smooth evolution).
+          let cost = Math.hypot(x + w / 2 - tx, y + h / 2 - ty);
           if (prev) cost += 0.7 * Math.hypot(x + w / 2 - prev.x - prev.w / 2, y + h / 2 - prev.y - prev.h / 2);
           if (cost < bestCost) { bestCost = cost; best = b; }
         };
         if (prev) tryAt(prev.x + prev.w / 2 - w / 2, prev.y + prev.h / 2 - h / 2);
         for (let c = 0; c < 450; c++) tryAt(Math.random() * (W + w * 0.6) - w * 0.3, Math.random() * (H + h * 0.6) - h * 0.3);
         if (best) {
-          nudge(best, placed, cx, cy, spacingOf(sel.n));
+          nudge(best, placed, tx, ty, spacingOf(sel.n));
           placed.push(best); result.push({ ...sel, box: best });
           return;
         }
@@ -198,14 +212,15 @@
     return result;
   }
 
-  // Slide a box toward the pad until it meets a neighbour: artworks gather around the drawing.
+  // Slide a box toward its target spot until it meets a neighbour (or gets there): some artworks end up
+  // flush against each other, others stay isolated.
   function nudge(b, placed, cx, cy, gap) {
     // placed[0] is the pad (already includes its margin); other artworks are kept `gap` px away.
     const hits = (nb) => placed.some((p, i) => overlaps(nb, p, i === 0 ? 0 : gap));
     for (const step of [4, 1]) { // coarse then fine, so "touching" really means touching
       for (let s = 0; s < 200; s++) {
         const dx = cx - (b.x + b.w / 2), dy = cy - (b.y + b.h / 2), d = Math.hypot(dx, dy);
-        if (d < 1) return;
+        if (d < step) return;
         const nb = { ...b, x: b.x + (dx / d) * step, y: b.y + (dy / d) * step };
         if (hits(nb)) break;
         b.x = nb.x; b.y = nb.y;
