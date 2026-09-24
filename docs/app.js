@@ -156,7 +156,10 @@
     if (!spacing.has(n)) spacing.set(n, Math.random() < 0.55 ? 0 : 6 + Math.random() * 26);
     return spacing.get(n);
   };
-  const PAD_GAP = 14; // artworks never come closer than this to the drawing pad
+  // Clear space kept around the drawing pad: 60px, plus room for the parallax drift (10px) and the float (~1px),
+  // so the visible gap never drops below 60px.
+  const PAD_SPACE = 60;
+  const PAD_GAP = PAD_SPACE + 10 + 2;
 
   const overlaps = (a, b, g = GAP) => a.x < b.x + b.w + g && b.x < a.x + a.w + g && a.y < b.y + b.h + g && b.y < a.y + a.h + g;
 
@@ -422,7 +425,7 @@
 
   // ---------- Parallax ----------
   // Once artworks are on screen they drift slightly against the mouse; each one has its own depth.
-  const PARALLAX = 10; // max offset in px (kept below PAD_GAP so nothing reaches the pad)
+  const PARALLAX = 10; // max offset in px (PAD_GAP reserves this on top of the 60px around the pad)
   let mx = 0, my = 0, pxFrame = 0;
   function parallaxOne(n, s) {
     const k = opened === n ? 0 : s.depth * PARALLAX;
