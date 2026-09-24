@@ -5,10 +5,10 @@ Dessine une forme au centre : les œuvres du Metropolitan Museum dont la silhoue
 
 ## Lancer
 
-    python3 -m http.server 8765 -d site
+    python3 -m http.server 8765 -d docs
     # puis ouvrir http://localhost:8765
 
-(`site/index.html` s'ouvre aussi directement en double-cliquant.)
+(`docs/index.html` s'ouvre aussi directement en double-cliquant.)
 
 ## Comment ça marche
 
@@ -16,8 +16,8 @@ Dessine une forme au centre : les œuvres du Metropolitan Museum dont la silhoue
   télécharge chaque image et la réduit en 96×96 niveaux de gris (cache dans `build/cache/`).
   Le Met bloque les rafales : le script va à ~1 requête/s et reprend là où il s'est arrêté.
 - `build/features.cjs` calcule pour chaque œuvre une signature de forme (contours orientés sur une
-  grille 16×16) avec **le même code** (`site/features.js`) que celui appliqué au dessin dans le navigateur,
-  et écrit `site/data/met-data.js`.
+  grille 16×16) avec **le même code** (`docs/features.js`) que celui appliqué au dessin dans le navigateur,
+  et écrit `docs/data/met-data.js`.
 - Dans le navigateur, le dessin est réduit en 96×96, décrit de la même façon, puis comparé
   (similarité cosinus) à toutes les œuvres. Les meilleures sont placées autour du canevas,
   plus grandes quand elles ressemblent davantage.

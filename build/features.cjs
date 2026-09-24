@@ -1,6 +1,6 @@
-// Compute artwork descriptors with the same code the browser uses, write site/data/met-data.js
+// Compute artwork descriptors with the same code the browser uses, write docs/data/met-data.js
 const fs = require('fs');
-require('../site/features.js');
+require('../docs/features.js');
 const { S, DIM, describe } = globalThis.MetFeatures;
 // Read straight from the fetch cache (works while fetching is still in progress).
 const dir = __dirname + '/cache/';
@@ -26,6 +26,6 @@ for (let n = 0; n < N; n++) {
     desc: e.desc || '', src: e.descSrc || '',
   });
 }
-fs.writeFileSync(__dirname + '/../site/data/met-data.js',
+fs.writeFileSync(__dirname + '/../docs/data/met-data.js',
   'window.MET_DATA=' + JSON.stringify({ dim: DIM, items, feats: q.toString('base64') }) + ';\n');
 console.log('wrote', N, 'items,', (q.length / 1024).toFixed(0), 'KB features');
