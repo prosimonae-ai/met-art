@@ -95,6 +95,10 @@ body.opened .bar { opacity: 1; transform: none; } /* back once an artwork is ope
 .hint path { fill: none; stroke: var(--hint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .hint g { transition: opacity .6s ease; }
 .hint.hide { opacity: 0; }
+/* Pen size cue (↑ / ↓ keys) */
+.pen-size { position: absolute; left: 50%; top: 50%; translate: -50% -50%; border-radius: 50%; background: #000;
+  pointer-events: none; opacity: 0; transition: opacity .3s ease, width .15s ease, height .15s ease; }
+.pen-size.show { opacity: .85; }
 
 /* Artwork panel ("art info") */
 .panel { position: fixed; z-index: 6; overflow: hidden;
@@ -114,7 +118,8 @@ body.opened .bar { opacity: 1; transform: none; } /* back once an artwork is ope
 .details h3 { margin: 0; font-weight: 400; font-size: 20px; }
 .acc, .acc-link { background: var(--button); border: .5px solid var(--glass-line); border-radius: 2px;
   font-size: 12px; text-transform: uppercase; color: var(--ink); }
-.acc { display: flex; flex-direction: column; gap: 20px; padding: 52px 6px 6px; margin-bottom: 5px; }
+.acc { display: flex; flex-direction: column; gap: 20px; padding: 52px 6px 6px; }
+#p-links { margin-top: -10px; } /* 10px between Overview and the links (the .details gap is 20px) */
 .acc-head { display: flex; justify-content: space-between; align-items: flex-end; padding: 0; border: 0;
   background: none; cursor: pointer; text-transform: uppercase; font-size: 12px; }
 .acc-head img { transition: transform .25s ease; }

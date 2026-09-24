@@ -37,7 +37,11 @@
   let strokes = [];
   let current = null;
   let lastLive = 0;
-  const LINE = 7 / 348; // stroke width as a fraction of the pad size (7px on the 348px mockup pad)
+  const LINE = 7 / 348; // default stroke width as a fraction of the pad size (7px on the 348px mockup pad)
+  // Pen size, changed with the ↑ / ↓ keys; each stroke keeps the width it was drawn with.
+  const PEN_MIN = 2 / 348, PEN_MAX = 40 / 348;
+  let pen = LINE;
+  const sizeCue = document.getElementById('pen-size');
 
   function sizeCanvas() {
     const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
@@ -61,9 +65,10 @@
     c.clearRect(0, 0, size, size);
     if (bg) { c.fillStyle = bg; c.fillRect(0, 0, size, size); }
     c.strokeStyle = '#000'; c.lineCap = 'round'; c.lineJoin = 'round';
-    c.lineWidth = Math.max(1, LINE * size);
-    for (const s of strokes) trace(c, s, size);
-    if (current) trace(c, current, size);
+    for (const s of current ? [...strokes, current] : strokes) {
+      c.lineWidth = Math.max(1, (s.w || LINE) * size);
+      trace(c, s, size);
+    }
   }
 
   function render() {
@@ -80,7 +85,7 @@
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
     closePanel();
-    current = [pt(e)]; render();
+    current = [pt(e)]; current.w = pen; render();
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!current) return;
@@ -103,7 +108,22 @@
   document.getElementById('clear').addEventListener('click', () => { closePanel(); strokes = []; render(); update(); });
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); strokes.pop(); render(); update(); }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      pen = Math.min(PEN_MAX, Math.max(PEN_MIN, pen * (e.key === 'ArrowUp' ? 1.25 : 0.8)));
+      showPenSize();
+    }
   });
+
+  // Brief cue in the middle of the pad showing the new pen size.
+  let cueTimer;
+  function showPenSize() {
+    const d = pen * pad.getBoundingClientRect().width;
+    sizeCue.style.width = sizeCue.style.height = d + 'px';
+    sizeCue.classList.add('show');
+    clearTimeout(cueTimer);
+    cueTimer = setTimeout(() => sizeCue.classList.remove('show'), 700);
+  }
 
   // ---------- Matching ----------
   const off = document.createElement('canvas');
