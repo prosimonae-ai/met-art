@@ -46,12 +46,18 @@ button { font: inherit; color: inherit; }
 
 /* Focus: blur everything except the hovered / opened artwork */
 #veil { position: absolute; inset: 0; z-index: 100; pointer-events: none; opacity: 0;
-  background: rgba(250, 250, 250, .4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: rgba(250, 250, 250, .62); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   transition: opacity .35s ease; }
 #wall.focus #veil { opacity: 1; }
 #wall.open #veil { pointer-events: auto; cursor: zoom-out; }
 .art.focused { z-index: 101 !important; transform: scale(1.04); }
-.art.opened { transform: none; cursor: zoom-out; }
+.art.opened { transform: none; cursor: zoom-out; z-index: 102 !important; }
+/* Frame behind the opened artwork: same glass box as the text panel */
+#art-frame { position: absolute; z-index: 101; pointer-events: none; opacity: 0; transform: translateY(8px);
+  background: var(--glass); border: .5px solid var(--panel-line); border-radius: 5px;
+  backdrop-filter: blur(8.75px); -webkit-backdrop-filter: blur(8.75px);
+  transition: opacity .3s ease, transform .3s ease; }
+#art-frame.show { opacity: 1; transform: none; }
 .art.focused .bob { animation-play-state: paused; }
 
 /* Header */

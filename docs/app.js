@@ -381,6 +381,7 @@
   }
 
   // Description on the left of the pad, the chosen artwork enlarged on its right.
+  const frame = document.getElementById('art-frame');
   function placePanel(n) {
     const W = window.innerWidth, H = window.innerHeight, M = 10; // 10px gutters, as in the mockup
     const pr = pad.getBoundingClientRect();
@@ -389,11 +390,15 @@
     const s = shown.get(n);
     if (side >= 280) {
       st.top = pr.top + 'px'; st.bottom = M + 'px'; st.left = M + 'px'; st.width = side + 'px'; st.right = '';
+      // Right column: a frame matching the text panel, with the artwork inside it (same 9.5px inner padding).
+      const fx = pr.right + M, fy = pr.top, fw = W - M - fx, fh = H - M - fy, P = 9.5;
+      Object.assign(frame.style, { left: fx + 'px', top: fy + 'px', width: fw + 'px', height: fh + 'px' });
+      frame.classList.add('show');
       if (s) {
         const it = items[n];
-        const aw = W - M - (pr.right + M), ah = H - M - pr.top;
+        const aw = fw - 2 * P, ah = fh - 2 * P;
         const w = Math.min(aw, ah * it.r), h = w / it.r;
-        setBox(s.el, { x: pr.right + M, y: pr.top, w, h });
+        setBox(s.el, { x: fx + P + (aw - w) / 2, y: fy + P, w, h });
       }
     } else { // narrow screens: bottom sheet under the pad, artwork stays in place
       st.left = st.right = '8px'; st.width = ''; st.bottom = '8px';
@@ -412,6 +417,7 @@
     document.body.classList.remove('opened');
     panel.classList.remove('show');
     panel.setAttribute('aria-hidden', 'true');
+    frame.classList.remove('show');
     unfocus();
   }
 
