@@ -390,7 +390,7 @@
     const s = shown.get(n);
     if (side >= 280) {
       st.top = pr.top + 'px'; st.bottom = M + 'px'; st.left = M + 'px'; st.width = side + 'px'; st.right = '';
-      // Right column: a frame matching the text panel, with the artwork inside it (same 9.5px inner padding).
+      // Right column: a frame matching the text panel, with the artwork inside it, top-left (same 9.5px inner padding).
       const fx = pr.right + M, fy = pr.top, fw = W - M - fx, fh = H - M - fy, P = 9.5;
       Object.assign(frame.style, { left: fx + 'px', top: fy + 'px', width: fw + 'px', height: fh + 'px' });
       frame.classList.add('show');
@@ -398,7 +398,7 @@
         const it = items[n];
         const aw = fw - 2 * P, ah = fh - 2 * P;
         const w = Math.min(aw, ah * it.r), h = w / it.r;
-        setBox(s.el, { x: fx + P + (aw - w) / 2, y: fy + P, w, h });
+        setBox(s.el, { x: fx + P, y: fy + P, w, h }); // top-left, like the text in the left panel
       }
     } else { // narrow screens: bottom sheet under the pad, artwork stays in place
       st.left = st.right = '8px'; st.width = ''; st.bottom = '8px';
