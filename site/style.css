@@ -1,0 +1,127 @@
+/* Sizes and colours follow the Figma file "Corpus" / page "final" (frames intro, drawing 1, drawing 2, art info),
+   designed at 1440x840. */
+:root {
+  --bg: #fafafa;
+  --ink: #1c1c1c;
+  --ink-soft: rgba(28, 28, 28, 0.35);
+  --glass: rgba(217, 217, 217, 0.21);
+  --glass-line: rgba(177, 176, 176, 0.5);
+  --panel-line: rgba(206, 206, 206, 0.68);
+  --button: rgba(255, 255, 255, 0.63);
+  --pad-bg: #f3f3f3;
+  --pad-line: #e2e2e2;
+  --dot: #b1b1b1;
+  --hint: #e5e5e5;
+  --gap: 10px;
+  /* The pad is 348px on the 1440x840 mockup and scales with the viewport. */
+  --pad-size: max(260px, min(24.1667vw, 41.4286vh));
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+  font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+
+/* Artwork wall */
+#wall { position: fixed; inset: 0; z-index: 1; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+  --pan-x: 0px; --pan-y: 0px; }
+#wall.panning { cursor: grabbing; }
+.art { position: absolute; margin: 0; cursor: pointer; opacity: 0; transform: scale(.94);
+  /* parallax offset (--px/--py, per artwork) + click-and-hold pan (--pan-x/--pan-y, on #wall) */
+  translate: calc(var(--px, 0px) + var(--pan-x)) calc(var(--py, 0px) + var(--pan-y));
+  transition: opacity .6s ease, transform .5s ease, translate .6s cubic-bezier(.2,.8,.2,1),
+    left .9s cubic-bezier(.2,.8,.2,1), top .9s cubic-bezier(.2,.8,.2,1),
+    width .9s cubic-bezier(.2,.8,.2,1), height .9s cubic-bezier(.2,.8,.2,1); }
+.art.in { opacity: 1; transform: none; }
+#wall.panning .art { cursor: grabbing; transition-property: opacity, transform, left, top, width, height; } /* follow the pointer 1:1 */
+/* First appearance after the first stroke: grow from small with a soft overshoot */
+.art.reveal { transform: scale(.4); transition: opacity .7s ease, transform .9s cubic-bezier(.2,1.25,.35,1), translate .6s cubic-bezier(.2,.8,.2,1),
+  left .9s cubic-bezier(.2,.8,.2,1), top .9s cubic-bezier(.2,.8,.2,1), width .9s cubic-bezier(.2,.8,.2,1), height .9s cubic-bezier(.2,.8,.2,1); }
+.art.reveal.in { transform: none; }
+.art.out { opacity: 0; transform: scale(.9); pointer-events: none; }
+.art .bob { width: 100%; height: 100%; animation: bob var(--dur, 7s) ease-in-out var(--delay, 0s) infinite alternate; }
+.art img { width: 100%; height: 100%; object-fit: cover; display: block; background: #ececec; }
+@keyframes bob { from { transform: translate(-.75px, -1px); } to { transform: translate(.75px, 1px); } } /* tiny, so touching tiles stay flush */
+
+/* Focus: blur everything except the hovered / opened artwork */
+#veil { position: absolute; inset: 0; z-index: 100; pointer-events: none; opacity: 0;
+  background: rgba(250, 250, 250, .4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  transition: opacity .35s ease; }
+#wall.focus #veil { opacity: 1; }
+#wall.open #veil { pointer-events: auto; cursor: zoom-out; }
+.art.focused { z-index: 101 !important; transform: scale(1.04); }
+.art.opened { transform: none; cursor: zoom-out; }
+.art.focused .bob { animation-play-state: paused; }
+
+/* Header */
+.bar { position: fixed; z-index: 10; top: var(--gap); left: var(--gap); right: var(--gap); height: 54px;
+  background: var(--glass); border: .5px solid var(--glass-line); border-radius: 5px;
+  backdrop-filter: blur(7.95px); -webkit-backdrop-filter: blur(7.95px);
+  transition: opacity .3s ease, transform .3s ease; }
+/* Hidden while an artwork is in focus, but the header zone keeps priority over artworks beneath it */
+body.focusing .bar { opacity: 0; transform: translateY(-8px); }
+body.opened .bar { opacity: 1; transform: none; } /* back once an artwork is opened */
+.logo { position: absolute; left: 9.5px; top: 9.5px; width: 32px; height: 34px; }
+.tools { position: absolute; left: 50%; top: 3.5px; transform: translateX(-50%); display: flex; gap: 4px;
+  transition: opacity .3s ease; }
+.tools.hidden { opacity: 0; pointer-events: none; }
+.tool { height: 46px; width: 42px; padding: 6px; cursor: pointer;
+  background: var(--button); border: .5px solid var(--glass-line); border-radius: 2px;
+  display: flex; align-items: flex-end; justify-content: flex-end; transition: background .2s; }
+.tool.wide { width: 299px; justify-content: space-between; }
+.tool.wide span { font-size: 12px; line-height: normal; text-transform: uppercase; color: var(--ink); }
+.tool.wide img { margin-bottom: 1px; }
+.tool:hover { background: rgba(255, 255, 255, .95); }
+
+/* Drawing pad */
+.stage { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; pointer-events: none; }
+.pad { position: relative; width: var(--pad-size); height: var(--pad-size); pointer-events: auto;
+  background-color: var(--pad-bg); border: .5px solid var(--pad-line); border-radius: 5px;
+  /* 1px dots every 11px, 8px from the edges (scaled with the pad) */
+  --cell: calc(var(--pad-size) * 11 / 348);
+  background-image: radial-gradient(circle, var(--dot) .5px, transparent .8px);
+  background-size: var(--cell) var(--cell);
+  background-position: calc(var(--pad-size) * 8 / 348 - var(--cell) / 2 + .5px) calc(var(--pad-size) * 8.5 / 348 - var(--cell) / 2 + .5px); }
+#draw { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+/* Empty-pad cue: example sketches that draw themselves (see hint.js) */
+.hint { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; transition: opacity .3s; }
+.hint path { fill: none; stroke: var(--hint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.hint g { transition: opacity .6s ease; }
+.hint.hide { opacity: 0; }
+
+/* Artwork panel ("art info") */
+.panel { position: fixed; z-index: 6; overflow: hidden;
+  background: var(--glass); border: .5px solid var(--panel-line); border-radius: 5px;
+  backdrop-filter: blur(8.75px); -webkit-backdrop-filter: blur(8.75px);
+  opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .3s ease, transform .3s ease; }
+.panel.show { opacity: 1; transform: none; pointer-events: auto; }
+.panel-body { position: absolute; inset: 9.5px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 80px; scrollbar-width: none; }
+.panel-body::-webkit-scrollbar { display: none; }
+.panel-head { display: flex; flex-direction: column; gap: 4px; }
+.panel h2 { margin: 0; font-weight: 400; font-size: 20px; line-height: normal; }
+.panel-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.panel-desc { margin: -40px 0 0; font-size: 40px; line-height: 1.1; white-space: pre-line; }
+.panel-desc:empty { display: none; }
+.details { display: flex; flex-direction: column; gap: 20px; }
+.details h3 { margin: 0; font-weight: 400; font-size: 20px; }
+.acc, .acc-link { background: var(--button); border: .5px solid var(--glass-line); border-radius: 2px;
+  font-size: 12px; text-transform: uppercase; color: var(--ink); }
+.acc { display: flex; flex-direction: column; gap: 20px; padding: 52px 6px 6px; margin-bottom: 5px; }
+.acc-head { display: flex; justify-content: space-between; align-items: flex-end; padding: 0; border: 0;
+  background: none; cursor: pointer; text-transform: uppercase; font-size: 12px; }
+.acc-head img { transition: transform .25s ease; }
+.acc.open .acc-head img { transform: rotate(180deg); }
+.acc-rows { margin: 0; display: flex; flex-direction: column; gap: 5px; }
+.acc:not(.open) .acc-rows { display: none; }
+.acc-rows div { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.acc-rows dt { white-space: nowrap; }
+.acc-rows dd { margin: 0; color: var(--ink-soft); text-align: right; }
+.acc-link { display: flex; justify-content: space-between; align-items: flex-end; height: 74px; padding: 6px;
+  margin-bottom: 5px; text-decoration: none; }
+.acc-link:hover { background: rgba(255, 255, 255, .95); }
+
+@media (max-width: 640px) {
+  :root { --gap: 8px; }
+  .tool.wide { width: 180px; }
+  .panel-desc { margin-top: -50px; font-size: 24px; }
+}

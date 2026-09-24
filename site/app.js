@@ -1,0 +1,445 @@
+(() => {
+  const { S, DIM, describe } = window.MetFeatures;
+  const DATA = window.MET_DATA;
+  const MAX = 30, MIN = 9;
+  const CENTERING = 0.8; // how much of the collection's "average" edge layout to subtract
+
+  // ---------- Artwork descriptors ----------
+  const items = DATA.items;
+  const N = items.length;
+  const raw = Uint8Array.from(atob(DATA.feats), (c) => c.charCodeAt(0));
+  const vecs = new Float32Array(N * DIM);
+  const mean = new Float32Array(DIM);
+  for (let n = 0; n < N; n++) {
+    const k = items[n].k;
+    for (let i = 0; i < DIM; i++) {
+      const v = raw[n * DIM + i] * k;
+      vecs[n * DIM + i] = v; mean[i] += v / N;
+    }
+  }
+  for (let n = 0; n < N; n++) {
+    let norm = 0;
+    for (let i = 0; i < DIM; i++) {
+      const v = vecs[n * DIM + i] - CENTERING * mean[i];
+      vecs[n * DIM + i] = v; norm += v * v;
+    }
+    norm = Math.sqrt(norm) || 1;
+    for (let i = 0; i < DIM; i++) vecs[n * DIM + i] /= norm;
+  }
+
+  // ---------- Drawing pad ----------
+  const pad = document.getElementById('pad');
+  const canvas = document.getElementById('draw');
+  const ctx = canvas.getContext('2d');
+  const hint = document.getElementById('hint');
+  const undoBtn = document.getElementById('undo');
+  const tools = document.querySelector('.tools');
+  let strokes = [];
+  let current = null;
+  let lastLive = 0;
+  const LINE = 7 / 348; // stroke width as a fraction of the pad size (7px on the 348px mockup pad)
+
+  function sizeCanvas() {
+    const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+    render();
+  }
+
+  function trace(c, pts, size) {
+    c.beginPath();
+    c.moveTo(pts[0][0] * size, pts[0][1] * size);
+    if (pts.length === 1) c.lineTo(pts[0][0] * size + 0.01, pts[0][1] * size);
+    for (let i = 1; i < pts.length - 1; i++) {
+      const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2;
+      c.quadraticCurveTo(pts[i][0] * size, pts[i][1] * size, mx * size, my * size);
+    }
+    if (pts.length > 1) { const p = pts[pts.length - 1]; c.lineTo(p[0] * size, p[1] * size); }
+    c.stroke();
+  }
+
+  function paint(c, size, bg) {
+    c.clearRect(0, 0, size, size);
+    if (bg) { c.fillStyle = bg; c.fillRect(0, 0, size, size); }
+    c.strokeStyle = '#000'; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.lineWidth = Math.max(1, LINE * size);
+    for (const s of strokes) trace(c, s, size);
+    if (current) trace(c, current, size);
+  }
+
+  function render() {
+    paint(ctx, canvas.width);
+    hint.classList.toggle('hide', strokes.length > 0 || !!current);
+    undoBtn.disabled = !strokes.length;
+    tools.classList.toggle('hidden', !strokes.length && !current);
+  }
+
+  const pt = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    closePanel();
+    current = [pt(e)]; render();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!current) return;
+    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of events) current.push(pt(ev));
+    render();
+    // Results follow the drawing as it evolves.
+    const now = performance.now();
+    if (now - lastLive > 280) { lastLive = now; update(); }
+  });
+  const end = () => {
+    if (!current) return;
+    strokes.push(current); current = null;
+    render(); update();
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+
+  undoBtn.addEventListener('click', () => { closePanel(); strokes.pop(); render(); update(); });
+  document.getElementById('clear').addEventListener('click', () => { closePanel(); strokes = []; render(); update(); });
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); strokes.pop(); render(); update(); }
+  });
+
+  // ---------- Matching ----------
+  const off = document.createElement('canvas');
+  off.width = off.height = S;
+  const offCtx = off.getContext('2d', { willReadFrequently: true });
+
+  function drawingDescriptor() {
+    paint(offCtx, S, '#fff');
+    const px = offCtx.getImageData(0, 0, S, S).data;
+    const gray = new Uint8Array(S * S);
+    for (let i = 0; i < S * S; i++) gray[i] = px[i * 4];
+    return describe(gray, null);
+  }
+
+  function inkLength() {
+    let len = 0;
+    for (const s of current ? [...strokes, current] : strokes) for (let i = 1; i < s.length; i++) len += Math.hypot(s[i][0] - s[i - 1][0], s[i][1] - s[i - 1][1]);
+    return len;
+  }
+
+  function rank() {
+    const d = drawingDescriptor();
+    const scores = new Float32Array(N);
+    for (let n = 0; n < N; n++) {
+      let s = 0; const o = n * DIM;
+      for (let i = 0; i < DIM; i++) s += d[i] * vecs[o + i];
+      scores[n] = s;
+    }
+    const order = Array.from({ length: N }, (_, i) => i).sort((a, b) => scores[b] - scores[a]);
+    // The more detailed the drawing, the tighter the selection.
+    const detail = inkLength();
+    const count = Math.max(MIN, Math.min(MAX, Math.round(MAX + 1 - 1.4 * detail - 1.5 * (strokes.length + (current ? 1 : 0) - 1))));
+    return order.slice(0, count).map((n) => ({ n, score: scores[n] }));
+  }
+
+  // ---------- Layout ----------
+  const wall = document.getElementById('wall');
+  const shown = new Map(); // n -> { el, box }
+  const GAP = 0;      // artworks may touch each other, as in the mockups
+  // Each artwork keeps its own spacing: about half of them sit flush against a neighbour, the rest keep a small random gap.
+  const spacing = new Map();
+  const spacingOf = (n) => {
+    if (!spacing.has(n)) spacing.set(n, Math.random() < 0.55 ? 0 : 6 + Math.random() * 26);
+    return spacing.get(n);
+  };
+  const PAD_GAP = 14; // artworks never come closer than this to the drawing pad
+
+  const overlaps = (a, b, g = GAP) => a.x < b.x + b.w + g && b.x < a.x + a.w + g && a.y < b.y + b.h + g && b.y < a.y + a.h + g;
+
+  function layout(selection) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const pr = pad.getBoundingClientRect();
+    const padBox = { x: pr.left - PAD_GAP + GAP, y: pr.top - PAD_GAP + GAP, w: pr.width + 2 * (PAD_GAP - GAP), h: pr.height + 2 * (PAD_GAP - GAP) };
+    const cx = pr.left + pr.width / 2, cy = pr.top + pr.height / 2;
+    const free = W * H - padBox.w * padBox.h;
+    const k = selection.length;
+    // Size follows similarity: the best match gets ~6x the surface of the weakest one shown.
+    const top = selection[0].score, low = selection[k - 1].score, span = Math.max(1e-6, top - low);
+    const weights = selection.map((s) => 0.3 + 1.7 * Math.pow((s.score - low) / span, 1.3));
+    const wsum = weights.reduce((a, b) => a + b, 0);
+    const budget = free * (0.5 + 0.28 * Math.min(1, k / MAX)); // the mockups fill most of the screen
+    const maxSide = Math.min(W, H) * 0.4;
+
+    const placed = [padBox];
+    const result = [];
+    selection.forEach((sel, i) => {
+      const it = items[sel.n];
+      const prev = shown.get(sel.n)?.box;
+      let area = (budget * weights[i]) / wsum;
+      for (let attempt = 0; attempt < 5; attempt++, area *= 0.72) {
+        let w = Math.sqrt(area * it.r), h = Math.sqrt(area / it.r);
+        const f = Math.min(1, maxSide / Math.max(w, h)); w *= f; h *= f;
+        let best = null, bestCost = Infinity;
+        const tryAt = (x, y) => {
+          const b = { x, y, w, h };
+          if (x < -w * 0.3 || y < -h * 0.3 || x + w > W + w * 0.3 || y + h > H + h * 0.3) return;
+          if (placed.some((p) => overlaps(b, p))) return;
+          // Pull toward the pad; existing artworks also resist moving far (smooth evolution).
+          let cost = Math.hypot(x + w / 2 - cx, (y + h / 2 - cy) * 1.15);
+          if (prev) cost += 0.7 * Math.hypot(x + w / 2 - prev.x - prev.w / 2, y + h / 2 - prev.y - prev.h / 2);
+          if (cost < bestCost) { bestCost = cost; best = b; }
+        };
+        if (prev) tryAt(prev.x + prev.w / 2 - w / 2, prev.y + prev.h / 2 - h / 2);
+        for (let c = 0; c < 450; c++) tryAt(Math.random() * (W + w * 0.6) - w * 0.3, Math.random() * (H + h * 0.6) - h * 0.3);
+        if (best) {
+          nudge(best, placed, cx, cy, spacingOf(sel.n));
+          placed.push(best); result.push({ ...sel, box: best });
+          return;
+        }
+      }
+    });
+    return result;
+  }
+
+  // Slide a box toward the pad until it meets a neighbour: artworks gather around the drawing.
+  function nudge(b, placed, cx, cy, gap) {
+    // placed[0] is the pad (already includes its margin); other artworks are kept `gap` px away.
+    const hits = (nb) => placed.some((p, i) => overlaps(nb, p, i === 0 ? 0 : gap));
+    for (const step of [4, 1]) { // coarse then fine, so "touching" really means touching
+      for (let s = 0; s < 200; s++) {
+        const dx = cx - (b.x + b.w / 2), dy = cy - (b.y + b.h / 2), d = Math.hypot(dx, dy);
+        if (d < 1) return;
+        const nb = { ...b, x: b.x + (dx / d) * step, y: b.y + (dy / d) * step };
+        if (hits(nb)) break;
+        b.x = nb.x; b.y = nb.y;
+      }
+    }
+  }
+
+
+  function apply(result) {
+    const keep = new Set(result.map((r) => r.n));
+    for (const [n, s] of shown) {
+      if (keep.has(n)) continue;
+      s.el.classList.remove('in', 'focused'); s.el.classList.add('out');
+      setTimeout(() => s.el.remove(), 650);
+      shown.delete(n);
+      if (opened === n) closePanel(); else if (focused === n) unfocus();
+    }
+    // First drawing on an empty wall: artworks pop in one after another, rippling out from the pad.
+    const reveal = shown.size === 0 && result.length > 0;
+    const pr = pad.getBoundingClientRect();
+    const pcx = pr.left + pr.width / 2, pcy = pr.top + pr.height / 2;
+    const t0 = performance.now();
+    result.forEach((r, i) => {
+      let s = shown.get(r.n);
+      if (!s) {
+        const d = Math.hypot(r.box.x + r.box.w / 2 - pcx, r.box.y + r.box.h / 2 - pcy);
+        const showAt = reveal ? t0 + 60 + d * 0.7 + Math.random() * 140 : 0;
+        s = { el: makeArt(r.n, showAt, reveal), depth: 0.35 + Math.random() * 0.65 };
+        shown.set(r.n, s);
+        parallaxOne(r.n, s);
+      }
+      setBox(s.el, r.box);
+      s.box = r.box;
+      s.el.style.zIndex = String(MAX - i);
+    });
+  }
+
+  function makeArt(n, showAt = 0, reveal = false) {
+    const it = items[n];
+    const el = document.createElement('figure');
+    el.className = reveal ? 'art reveal' : 'art';
+    const bob = document.createElement('div');
+    bob.className = 'bob';
+    bob.style.setProperty('--dur', (5 + Math.random() * 4).toFixed(2) + 's');
+    bob.style.setProperty('--delay', (-Math.random() * 8).toFixed(2) + 's');
+    const img = new Image();
+    img.alt = [it.t, it.a].filter(Boolean).join(' — ');
+    img.referrerPolicy = 'no-referrer';
+    img.draggable = false;
+    img.onload = () => setTimeout(() => requestAnimationFrame(() => {
+      el.classList.add('in');
+      if (reveal) setTimeout(() => el.classList.remove('reveal'), 1000);
+    }), Math.max(0, showAt - performance.now()));
+    img.onerror = () => el.remove();
+    img.src = it.img;
+    bob.appendChild(img);
+    el.appendChild(bob);
+    el.addEventListener('mouseenter', () => { if (!current && !panning && opened === null) focus(n); });
+    el.addEventListener('mouseleave', () => { if (opened === null) unfocus(); });
+    el.addEventListener('click', () => {
+      if (dragged) return; // the pointer was used to pan, not to pick
+      opened === n ? closePanel() : openPanel(n);
+    });
+    wall.appendChild(el);
+    return el;
+  }
+
+  function setBox(el, b) {
+    el.style.left = b.x + 'px'; el.style.top = b.y + 'px';
+    el.style.width = b.w + 'px'; el.style.height = b.h + 'px';
+  }
+
+  // ---------- Focus & description panel ----------
+  // Placeholder: the same description for every artwork (text from the "art info" mockup).
+  const PLACEHOLDER_DESC = 'Watkins, the consummate photographer of the American West, combined a virtuoso mastery of the difficult wet-plate negative process with a rigorous sense of pictorial structure. In 1863 he was hired to make a photographic survey of the quicksilver mining operations in New Almaden, near San Jose, California. Quicksilver—used to bond with, and weigh down, the finest particles of gold that might otherwise float away in the sluicing process—was essential to the gold-mining industry, and the mining of quicksilver itself became a profitable enterprise.\n\nWatkins\u2019s clients hoped to use his photographs to convince potential investors of the promise of the New Almaden site. To this end Watkins made numerous stereographic views documenting minute details of the mining process as well as mammoth views that were meant to show the town to its best possible advantage. Capitalizing on the calm of the hazy early morning and a picturesque vantage point, Watkins portrayed the mining camp as a charming mountain village possessing an appealing tidiness and an air of perfect tranquility.';
+  const panel = document.getElementById('panel');
+  let focused = null, opened = null;
+
+  function focus(n) {
+    if (focused !== null && focused !== n) shown.get(focused)?.el.classList.remove('focused');
+    focused = n;
+    shown.get(n)?.el.classList.add('focused');
+    wall.classList.add('focus');
+    document.body.classList.add('focusing');
+  }
+  function unfocus() {
+    if (focused !== null) shown.get(focused)?.el.classList.remove('focused');
+    focused = null;
+    wall.classList.remove('focus');
+    document.body.classList.remove('focusing');
+  }
+
+  function openPanel(n) {
+    const it = items[n];
+    focus(n);
+    opened = n;
+    wall.classList.add('open');
+    document.body.classList.add('opened');
+    shown.get(n)?.el.classList.add('opened');
+    if (shown.get(n)) parallaxOne(n, shown.get(n));
+    document.getElementById('p-title').textContent = it.t || 'Sans titre';
+    document.getElementById('p-artist').textContent = [it.a, it.nat].filter(Boolean).join(' ') || it.cul || '';
+    document.getElementById('p-date').textContent = it.d || '';
+    document.getElementById('p-desc').textContent = PLACEHOLDER_DESC;
+    const facts = document.getElementById('p-facts');
+    facts.replaceChildren();
+    const artist = it.a ? it.a + (it.nat ? ` (${it.nat})` : '') : '';
+    for (const [label, v] of [['Title', it.t], ['Artist', artist], ['Date', it.d], ['Medium', it.med], ['Dimensions', it.dim],
+      ['Culture', it.cul], ['Classification', it.cls], ['Department', it.dep]]) {
+      if (!v) continue;
+      const row = document.createElement('div');
+      const dt = document.createElement('dt'); dt.textContent = label;
+      const dd = document.createElement('dd'); dd.textContent = v;
+      row.append(dt, dd); facts.append(row);
+    }
+    const links = document.getElementById('p-links');
+    links.replaceChildren();
+    const link = (href, text) => {
+      const a = document.createElement('a');
+      a.className = 'acc-link'; a.href = href; a.target = '_blank'; a.rel = 'noopener';
+      const label = document.createElement('span'); label.textContent = text;
+      const arrow = document.createElement('span'); arrow.textContent = '↗';
+      a.append(label, arrow); links.append(a);
+    };
+    if (it.url) link(it.url, 'Voir sur metmuseum.org');
+    placePanel(n);
+    panel.querySelector('.panel-body').scrollTop = 0;
+    panel.classList.add('show');
+    panel.setAttribute('aria-hidden', 'false');
+  }
+
+  // Description on the left of the pad, the chosen artwork enlarged on its right.
+  function placePanel(n) {
+    const W = window.innerWidth, H = window.innerHeight, M = 10; // 10px gutters, as in the mockup
+    const pr = pad.getBoundingClientRect();
+    const side = pr.left - 2 * M;
+    const st = panel.style;
+    const s = shown.get(n);
+    if (side >= 280) {
+      st.top = pr.top + 'px'; st.bottom = M + 'px'; st.left = M + 'px'; st.width = side + 'px'; st.right = '';
+      if (s) {
+        const it = items[n];
+        const aw = W - M - (pr.right + M), ah = H - M - pr.top;
+        const w = Math.min(aw, ah * it.r), h = w / it.r;
+        setBox(s.el, { x: pr.right + M, y: pr.top, w, h });
+      }
+    } else { // narrow screens: bottom sheet under the pad, artwork stays in place
+      st.left = st.right = '8px'; st.width = ''; st.bottom = '8px';
+      st.top = Math.min(pr.bottom + 8, H * 0.55) + 'px';
+    }
+  }
+
+  function closePanel() {
+    if (opened === null) return;
+    const s = shown.get(opened);
+    if (s) { s.el.classList.remove('opened'); setBox(s.el, s.box); }
+    const was = opened;
+    opened = null;
+    if (s) parallaxOne(was, s);
+    wall.classList.remove('open');
+    document.body.classList.remove('opened');
+    panel.classList.remove('show');
+    panel.setAttribute('aria-hidden', 'true');
+    unfocus();
+  }
+
+  document.getElementById('veil').addEventListener('click', closePanel);
+  const acc = document.getElementById('acc-overview');
+  acc.querySelector('.acc-head').addEventListener('click', (e) => {
+    const open = acc.classList.toggle('open');
+    e.currentTarget.setAttribute('aria-expanded', String(open));
+  });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePanel(); });
+
+  // ---------- Parallax ----------
+  // Once artworks are on screen they drift slightly against the mouse; each one has its own depth.
+  const PARALLAX = 10; // max offset in px (kept below PAD_GAP so nothing reaches the pad)
+  let mx = 0, my = 0, pxFrame = 0;
+  function parallaxOne(n, s) {
+    const k = opened === n ? 0 : s.depth * PARALLAX;
+    s.el.style.setProperty('--px', (-mx * k).toFixed(2) + 'px');
+    s.el.style.setProperty('--py', (-my * k).toFixed(2) + 'px');
+  }
+  window.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    mx = (e.clientX / window.innerWidth - 0.5) * 2;
+    my = (e.clientY / window.innerHeight - 0.5) * 2;
+    if (!pxFrame) pxFrame = requestAnimationFrame(() => { pxFrame = 0; for (const [n, s] of shown) parallaxOne(n, s); });
+  });
+
+  // ---------- Click & hold to pan ----------
+  // Dragging the wall shifts every artwork a little (with resistance), e.g. to see those under the header.
+  // On release everything glides back, so the pad stays clear of artworks.
+  let panning = false, dragged = false, panStart = null;
+  const soft = (d, max) => max * Math.tanh(d / max);
+  wall.addEventListener('pointerdown', (e) => {
+    if (opened !== null || e.button !== 0) return;
+    panStart = { x: e.clientX, y: e.clientY };
+    dragged = false;
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!panStart) return;
+    const dx = e.clientX - panStart.x, dy = e.clientY - panStart.y;
+    if (!panning) {
+      if (Math.hypot(dx, dy) < 6) return;
+      panning = dragged = true;
+      unfocus();
+      wall.classList.add('panning');
+    }
+    const maxX = Math.max(60, window.innerWidth * 0.05), maxY = Math.max(75, window.innerHeight * 0.09); // enough to peek under the header (64px)
+    wall.style.setProperty('--pan-x', soft(dx, maxX).toFixed(1) + 'px');
+    wall.style.setProperty('--pan-y', soft(dy, maxY).toFixed(1) + 'px');
+  });
+  const endPan = () => {
+    panStart = null;
+    if (!panning) return;
+    panning = false;
+    wall.classList.remove('panning');
+    wall.style.setProperty('--pan-x', '0px');
+    wall.style.setProperty('--pan-y', '0px');
+    setTimeout(() => { dragged = false; }, 0); // let the click that ends the drag be ignored first
+  };
+  window.addEventListener('pointerup', endPan);
+  window.addEventListener('pointercancel', endPan);
+
+  function update() {
+    apply(strokes.length || current ? layout(rank()) : []);
+  }
+
+  let rt;
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { sizeCanvas(); update(); if (opened !== null) placePanel(opened); }, 150); });
+  sizeCanvas();
+  update();
+
+  // Debug hook for testing from the console.
+  window.__met = { rank, setStrokes: (s) => { strokes = s; render(); update(); }, openPanel: (i) => openPanel([...shown.keys()][i]) };
+})();

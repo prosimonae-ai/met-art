@@ -1,0 +1,5 @@
+# Fetch cache (re-created by build/fetch.py and build/enrich.py)
+build/cache/
+build/meta.json
+build/pixels.bin
+.DS_Store

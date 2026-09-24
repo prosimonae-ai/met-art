@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dessine le Met</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="wall" aria-live="polite"><div id="veil"></div></div>
+
+  <header class="bar">
+    <img class="logo" src="assets/logo.svg" width="32" height="34" alt="The Met">
+    <div class="tools hidden">
+      <button id="undo" class="tool" title="Annuler le dernier trait" aria-label="Annuler">
+        <img src="assets/icon-undo.svg" width="8" height="9" alt="">
+      </button>
+      <button id="clear" class="tool wide" title="Effacer le dessin">
+        <span>clear field</span>
+        <img src="assets/icon-close.svg" width="9" height="7" alt="">
+      </button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="pad" id="pad">
+      <canvas id="draw" aria-label="Zone de dessin"></canvas>
+      <svg class="hint" id="hint" viewBox="0 0 100 100" aria-hidden="true"></svg>
+    </div>
+  </main>
+
+  <aside class="panel" id="panel" aria-hidden="true">
+    <div class="panel-body">
+      <header class="panel-head">
+        <h2 id="p-title"></h2>
+        <div class="panel-meta"><span id="p-artist"></span><span id="p-date"></span></div>
+      </header>
+      <p class="panel-desc" id="p-desc"></p>
+      <section class="details">
+        <h3>Artwork Details</h3>
+        <div class="acc open" id="acc-overview">
+          <button class="acc-head" type="button" aria-expanded="true">
+            <span>Overview</span><img src="assets/icon-chevron.svg" width="9" height="5" alt="">
+          </button>
+          <dl class="acc-rows" id="p-facts"></dl>
+        </div>
+        <div id="p-links"></div>
+      </section>
+    </div>
+  </aside>
+
+  <script src="features.js"></script>
+  <script src="data/met-data.js"></script>
+  <script src="app.js"></script>
+  <script src="hint.js"></script>
+</body>
+</html>
