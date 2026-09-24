@@ -69,6 +69,9 @@ button { font: inherit; color: inherit; }
 body.focusing .bar { opacity: 0; transform: translateY(-8px); }
 body.opened .bar { opacity: 1; transform: none; } /* back once an artwork is opened */
 .logo { position: absolute; left: 9.5px; top: 9.5px; width: 32px; height: 34px; }
+/* "THE MET × (signature)" lock-up from the intro mockup */
+.logo-x { position: absolute; left: 48.5px; top: 22.5px; width: 9.116px; height: 7.087px; }
+.logo-mark { position: absolute; left: 65.5px; top: 12.5px; width: 72px; height: 21px; }
 .tools { position: absolute; left: 50%; top: 3.5px; transform: translateX(-50%); display: flex; gap: 4px;
   transition: opacity .3s ease; }
 .tools.hidden { opacity: 0; pointer-events: none; }
@@ -136,5 +139,6 @@ body.opened .bar { opacity: 1; transform: none; } /* back once an artwork is ope
 @media (max-width: 640px) {
   :root { --gap: 8px; }
   .tool.wide { width: 180px; }
+  .tools { left: auto; right: 3.5px; transform: none; } /* keep clear of the logo lock-up */
   .panel-desc { margin-top: -50px; font-size: 24px; }
 }
