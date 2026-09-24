@@ -173,7 +173,10 @@
     // (best match ~6x the side of the weakest one shown).
     const weights = selection.map((s, i) => (0.06 + 3 * Math.pow((s.score - low) / span, 2.4)) * (i === 0 ? 1.5 : 1));
     const wsum = weights.reduce((a, b) => a + b, 0);
-    const budget = free * (0.5 + 0.28 * Math.min(1, k / MAX)); // the mockups fill most of the screen
+    // Covered surface grows with the number of results: a full wall (~78%) at 30, but a sparse, airy one
+    // when the selection has narrowed down to a few artworks.
+    const fill = Math.min(1, k / MAX);
+    const budget = free * (0.16 + 0.62 * fill * fill);
     const maxSide = Math.min(W, H) * 0.5;
     const minSide = Math.min(W, H) * 0.06; // keep the smallest tiles readable
 
@@ -183,7 +186,8 @@
       const it = items[sel.n];
       const prev = shown.get(sel.n)?.box;
       // Target = the artwork's own random spot; the very best matches lean a little toward the pad.
-      const a = anchorOf(sel.n), lean = i < 3 ? 0.35 : i < 8 ? 0.15 : 0;
+      // With few results nobody leans in, so they stay scattered across the page.
+      const a = anchorOf(sel.n), lean = (i < 3 ? 0.35 : i < 8 ? 0.15 : 0) * fill * fill;
       const tx = a.u * W + (cx - a.u * W) * lean, ty = a.v * H + (cy - a.v * H) * lean;
       let area = (budget * weights[i]) / wsum;
       for (let attempt = 0; attempt < 5; attempt++, area *= 0.72) {
@@ -238,7 +242,8 @@
       shown.delete(n);
       if (opened === n) closePanel(); else if (focused === n) unfocus();
     }
-    // First drawing on an empty wall: artworks pop in one after another, rippling out from the pad.
+    // First drawing on an empty wall: artworks fly in from outside the window, one after another,
+    // each along the line from the pad through its final spot.
     const reveal = shown.size === 0 && result.length > 0;
     const pr = pad.getBoundingClientRect();
     const pcx = pr.left + pr.width / 2, pcy = pr.top + pr.height / 2;
@@ -246,19 +251,42 @@
     result.forEach((r, i) => {
       let s = shown.get(r.n);
       if (!s) {
+        s = { depth: 0.35 + Math.random() * 0.65, box: r.box, pending: true };
         const d = Math.hypot(r.box.x + r.box.w / 2 - pcx, r.box.y + r.box.h / 2 - pcy);
-        const showAt = reveal ? t0 + 60 + d * 0.7 + Math.random() * 140 : 0;
-        s = { el: makeArt(r.n, showAt, reveal), depth: 0.35 + Math.random() * 0.65 };
+        const showAt = reveal ? t0 + 80 + i * 45 + d * 0.25 + Math.random() * 160 : 0;
+        s.el = makeArt(r.n, reveal, () => {
+          // Image loaded and its turn has come: start from its current (off-screen) box, glide to the latest one.
+          setTimeout(() => requestAnimationFrame(() => {
+            if (!shown.has(r.n)) return;
+            s.pending = false;
+            setBox(s.el, s.box);
+            s.el.classList.add('in');
+            if (reveal) setTimeout(() => s.el.classList.remove('reveal'), 1500);
+          }), Math.max(0, showAt - performance.now()));
+        });
+        setBox(s.el, reveal ? offscreen(r.box, pcx, pcy) : r.box);
         shown.set(r.n, s);
         parallaxOne(r.n, s);
       }
-      setBox(s.el, r.box);
+      if (!s.pending) setBox(s.el, r.box); // artworks still waiting to fly in pick up their latest box on arrival
       s.box = r.box;
       s.el.style.zIndex = String(MAX - i);
     });
   }
 
-  function makeArt(n, showAt = 0, reveal = false) {
+  // Same box pushed out of the window, along the direction from the pad centre through the box.
+  function offscreen(b, pcx, pcy) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    let ux = cx - pcx, uy = cy - pcy;
+    const len = Math.hypot(ux, uy) || 1; ux /= len; uy /= len;
+    const tx = ux > 0 ? (W - b.x) / ux : ux < 0 ? (b.x + b.w) / -ux : Infinity;
+    const ty = uy > 0 ? (H - b.y) / uy : uy < 0 ? (b.y + b.h) / -uy : Infinity;
+    const t = Math.min(tx, ty) + 40;
+    return { ...b, x: b.x + ux * t, y: b.y + uy * t };
+  }
+
+  function makeArt(n, reveal, onReady) {
     const it = items[n];
     const el = document.createElement('figure');
     el.className = reveal ? 'art reveal' : 'art';
@@ -270,10 +298,7 @@
     img.alt = [it.t, it.a].filter(Boolean).join(' — ');
     img.referrerPolicy = 'no-referrer';
     img.draggable = false;
-    img.onload = () => setTimeout(() => requestAnimationFrame(() => {
-      el.classList.add('in');
-      if (reveal) setTimeout(() => el.classList.remove('reveal'), 1000);
-    }), Math.max(0, showAt - performance.now()));
+    img.onload = onReady;
     img.onerror = () => el.remove();
     img.src = it.img;
     bob.appendChild(img);
